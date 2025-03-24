@@ -1,44 +1,33 @@
-import express from "express";
-import { execSync } from "child_process";
-import fs from "fs";
-import FormData from "form-data";
-import axios from "axios";
-import { v4 as uuidv4 } from "uuid";
+const express = require("express");
+const bodyParser = require("body-parser");
+const { exec } = require("child_process");
 
 const app = express();
-app.use(express.json());
+const port = process.env.PORT || 3000;
 
-app.post("/transcribe", async (req, res) => {
-  const { tiktok_url } = req.body;
-  const id = uuidv4();
-  const videoPath = `/tmp/${id}.mp4`;
+app.use(bodyParser.json());
 
-  try {
-    execSync(`yt-dlp -o ${videoPath} ${tiktok_url}`);
+app.post("/", (req, res) => {
+  const videoUrl = req.body.video_url;
 
-    const form = new FormData();
-    form.append("file", fs.createReadStream(videoPath));
-    form.append("model", "whisper-1");
-
-    const whisperRes = await axios.post(
-      "https://api.openai.com/v1/audio/transcriptions",
-      form,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-          ...form.getHeaders(),
-        },
-      }
-    );
-
-    fs.unlinkSync(videoPath);
-    res.json({ transcript: whisperRes.data.text });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Fehler bei Verarbeitung", details: err.message });
+  if (!videoUrl) {
+    return res.status(400).json({ error: "video_url fehlt im Body." });
   }
+
+  console.log("Empfangene URL:", videoUrl);
+
+  // yt-dlp aus lokalem Ordner aufrufen
+  exec(`./bin/yt-dlp -o temp.mp4 "${videoUrl}"`, (err, stdout, stderr) => {
+    if (err) {
+      console.error("Fehler beim Download:", stderr);
+      return res.status(500).json({ error: "Fehler beim Video-Download." });
+    }
+
+    console.log("Download erfolgreich:", stdout);
+    return res.json({ message: "Video erfolgreich heruntergeladen." });
+  });
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log("Server läuft auf Port 3000");
+app.listen(port, () => {
+  console.log(`Server läuft auf Port ${port}`);
 });
